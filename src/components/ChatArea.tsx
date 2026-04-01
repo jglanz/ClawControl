@@ -5,6 +5,7 @@ import type { ExecApprovalDecision } from '../lib/openclaw'
 import { Message, stripAnsi } from '../lib/openclaw'
 import { resolveToolDisplay, extractToolDetail } from '../lib/openclaw/tool-display'
 import { openExternal } from '../lib/platform'
+import { playBase64Audio } from '../lib/audio-playback'
 import { ToolIcon } from './ToolIcon'
 import { SubagentBlock } from './SubagentBlock'
 import { format, isSameDay } from 'date-fns'
@@ -52,6 +53,9 @@ export function ChatArea() {
   const isCompacting = useStore(selectIsCompacting)
   const sideResult = useStore((state) => state.sideResult)
   const dismissSideResult = useStore((state) => state.dismissSideResult)
+  const ttsAutoPlay = useStore((state) => state.ttsAutoPlay)
+  const voiceAssistantActive = useStore((state) => state.voiceAssistantActive)
+  const client = useStore((state) => state.client)
   const messages = useMemo(() => {
     const seen = new Set<string>()
     return allMessages.filter((m) => {
@@ -109,6 +113,22 @@ export function ChatArea() {
     }
     return map
   }, [activeSubagents, currentSessionId])
+
+  // Auto-play TTS for assistant responses (when ttsAutoPlay enabled and not in VA mode)
+  const lastTtsMessageIdRef = useRef('')
+  useEffect(() => {
+    if (!ttsAutoPlay || !client || voiceAssistantActive || isStreaming) return
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== 'assistant' || last.id === lastTtsMessageIdRef.current) return
+    lastTtsMessageIdRef.current = last.id || ''
+    if (!last.content?.trim()) return
+    void (async () => {
+      try {
+        const result = await client.talkSpeak({ text: last.content })
+        if (result?.audioBase64) playBase64Audio(result.audioBase64, result.mimeType || 'audio/mpeg')
+      } catch (err) { console.warn('[ChatArea] TTS auto-play failed:', err) }
+    })()
+  }, [messages, isStreaming, ttsAutoPlay, voiceAssistantActive, client])
 
   // Mark session switches so the next render with messages jumps instantly
   useEffect(() => {

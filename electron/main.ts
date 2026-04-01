@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from '
 import { spawn, ChildProcess } from 'child_process'
 import crypto from 'crypto'
 import os from 'os'
+import { setupSpeechHandlers, cleanupSpeech } from './speech'
 
 // On production builds, serve via a custom protocol scheme to avoid file:// origin issues
 const useCustomProtocol = !process.env.VITE_DEV_SERVER_URL
@@ -211,9 +212,13 @@ app.whenReady().then(() => {
 
   loadTrustedHosts()
   createWindow()
+
+  // Initialize speech module after window is ready
+  if (mainWindow) setupSpeechHandlers(mainWindow)
 })
 
 app.on('window-all-closed', () => {
+  cleanupSpeech()
   if (process.platform !== 'darwin') {
     app.quit()
   }
@@ -621,82 +626,8 @@ ipcMain.handle('crypto:signEd25519', async (_event, privateKeyJwk: JsonWebKey, p
   return signature.toString('base64url')
 })
 
-// --- Speech recognition via native platform APIs ---
-
-let speechProcess: ChildProcess | null = null
-
-ipcMain.handle('speech:recognize', (_event, timeoutSec: number = 15) => {
-  // Kill any previous speech process
-  if (speechProcess) {
-    speechProcess.kill()
-    speechProcess = null
-  }
-
-  if (process.platform === 'win32') {
-    return new Promise<{ text: string; error?: string }>((resolve) => {
-      const script = `
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        Add-Type -AssemblyName System.Speech
-        $rec = New-Object System.Speech.Recognition.SpeechRecognitionEngine
-        $rec.SetInputToDefaultAudioDevice()
-        $rec.LoadGrammar((New-Object System.Speech.Recognition.DictationGrammar))
-        $result = $rec.Recognize((New-Object TimeSpan 0,0,${Math.max(5, Math.min(timeoutSec, 30))}))
-        if ($result) { Write-Output $result.Text }
-        $rec.Dispose()
-      `
-      speechProcess = spawn('powershell', [
-        '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', script
-      ], { stdio: ['ignore', 'pipe', 'pipe'] })
-
-      let stdout = ''
-      let stderr = ''
-
-      speechProcess.stdout?.on('data', (data) => { stdout += data.toString() })
-      speechProcess.stderr?.on('data', (data) => { stderr += data.toString() })
-
-      speechProcess.on('close', (code) => {
-        speechProcess = null
-        if (code === null) {
-          // Killed (user cancelled)
-          resolve({ text: '' })
-        } else if (stderr.trim()) {
-          resolve({ text: '', error: stderr.trim() })
-        } else {
-          resolve({ text: stdout.trim() })
-        }
-      })
-
-      speechProcess.on('error', (err) => {
-        speechProcess = null
-        resolve({ text: '', error: err.message })
-      })
-    })
-  }
-
-  if (process.platform === 'darwin') {
-    return new Promise<{ text: string; error?: string }>((resolve) => {
-      // macOS: Use the `say` command's counterpart — AppleScript with SFSpeechRecognizer is complex,
-      // so we fall back to the built-in `SpeechRecognitionEngine` equivalent. Unfortunately macOS
-      // doesn't have a simple CLI for speech-to-text. Return an error so the renderer falls back.
-      resolve({ text: '', error: 'not-available' })
-    })
-  }
-
-  // Linux or other platforms: not supported
-  return Promise.resolve({ text: '', error: 'not-available' })
-})
-
-ipcMain.handle('speech:stop', () => {
-  if (speechProcess) {
-    speechProcess.kill()
-    speechProcess = null
-  }
-})
-
-ipcMain.handle('speech:available', () => {
-  // Windows: System.Speech is available on all Windows 10/11 installations
-  return process.platform === 'win32'
-})
+// Speech recognition, wake word, and Voice Assistant are handled by the speech module.
+// Handlers are registered in setupSpeechHandlers() called after window creation.
 
 // Trust a hostname for certificate errors (persisted across app restarts)
 ipcMain.handle('cert:trustHost', async (_event, hostname: string) => {

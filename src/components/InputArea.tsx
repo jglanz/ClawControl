@@ -142,8 +142,15 @@ export function InputArea() {
     }, 700)
   }
 
+  const hasNativeElectronWake = () => getPlatform() === 'electron' && !!(window as any).electronAPI?.wakeStart
+
   const stopWakeRecognition = async () => {
     clearWakeRestartTimer()
+
+    // Stop Electron native wake (whisper stream)
+    if (hasNativeElectronWake()) {
+      await (window as any).electronAPI.wakeStop?.()
+    }
 
     const wakeBrowser = wakeBrowserRecognitionRef.current
     if (wakeBrowser) {
@@ -322,7 +329,9 @@ export function InputArea() {
       return
     }
     try {
-      if (nativeSpeechAvailableRef.current) {
+      if (hasNativeElectronWake()) {
+        await (window as any).electronAPI.wakeStart(wakeTriggersRef.current)
+      } else if (nativeSpeechAvailableRef.current) {
         await startNativeWakeRecognition()
       } else {
         startBrowserWakeRecognition()
@@ -362,7 +371,7 @@ export function InputArea() {
 
     recognition.onerror = (event: any) => {
       const code = event?.error || 'unknown'
-      console.warn('Speech recognition error:', code)
+      console.warn('Speech recognition error:', event)
       const messages: Record<string, string> = {
         'not-allowed': 'Microphone access was denied. Please allow microphone permission.',
         'service-not-allowed': 'Speech recognition service is not available.',
@@ -448,7 +457,7 @@ export function InputArea() {
     let cancelled = false
 
     const detectVoiceSupport = async () => {
-      // Check Electron native speech (Windows System.Speech)
+      // Electron: use native speech (whisper-cli on Linux/macOS, System.Speech on Windows)
       if (getPlatform() === 'electron' && (window as any).electronAPI?.speechAvailable) {
         try {
           const available = await (window as any).electronAPI.speechAvailable()
@@ -460,6 +469,11 @@ export function InputArea() {
         } catch {
           // Fall through
         }
+        // Electron's Chromium doesn't include Google speech service, so browser
+        // webkitSpeechRecognition will always fail with 'network'. Don't fall
+        // through — voice is unsupported until whisper-cli is installed.
+        if (!cancelled) setVoiceSupported(false)
+        return
       }
 
       if (isNativeMobile()) {
@@ -525,6 +539,33 @@ export function InputArea() {
       void stopWakeRecognition()
     }
   }, [wakeEnabled, wakeTriggers, voiceSupported, connected, isStreaming, isListening])
+
+  // Wire up Electron native wake events and global hotkey
+  useEffect(() => {
+    const api = (window as any).electronAPI
+    if (getPlatform() !== 'electron' || !api) return
+
+    api.onWakeDetected?.((data: { trigger: string; text: string; action: string }) => {
+      if (data.action === 'startAssistant') {
+        useStore.getState().startVoiceAssistant()
+      } else if (data.text) {
+        void useStore.getState().sendMessage(data.text)
+      } else {
+        void beginWakeCapture()
+      }
+    })
+
+    api.onHotkeyToggle?.(() => {
+      useStore.getState().toggleVoiceAssistant()
+    })
+  }, [])
+
+  // Keep native wake triggers in sync
+  useEffect(() => {
+    if (hasNativeElectronWake()) {
+      (window as any).electronAPI.wakeUpdateTriggers?.(wakeTriggers)
+    }
+  }, [wakeTriggers])
 
   useEffect(() => {
     if (draftMessage) {

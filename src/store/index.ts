@@ -306,6 +306,15 @@ interface AppState {
   compactCurrentSession: () => Promise<void>
   patchCurrentSession: (patch: { thinkingLevel?: string | null; fastMode?: boolean | null; verboseLevel?: string | null; model?: string | null }) => Promise<void>
 
+  // Voice Assistant
+  voiceAssistantActive: boolean
+  voiceAssistantPhase: 'idle' | 'listening' | 'transcribing' | 'waiting' | 'speaking'
+  ttsAutoPlay: boolean
+  setTtsAutoPlay: (enabled: boolean) => void
+  startVoiceAssistant: () => void
+  stopVoiceAssistant: () => void
+  toggleVoiceAssistant: () => void
+
   // Subagents
   activeSubagents: SubagentInfo[]
   startSubagentPolling: () => void
@@ -790,6 +799,28 @@ export const useStore = create<AppState>()(
         }
         return { canvasVisible: true }
       }),
+
+      // Voice Assistant
+      voiceAssistantActive: false,
+      voiceAssistantPhase: 'idle' as const,
+      ttsAutoPlay: false,
+      setTtsAutoPlay: (enabled) => set({ ttsAutoPlay: enabled }),
+      startVoiceAssistant: () => {
+        const api = (window as any).electronAPI
+        if (!api?.vaStart) return
+        api.vaStart()
+        set({ voiceAssistantActive: true, voiceAssistantPhase: 'listening' })
+      },
+      stopVoiceAssistant: () => {
+        const api = (window as any).electronAPI
+        if (api?.vaStop) api.vaStop()
+        set({ voiceAssistantActive: false, voiceAssistantPhase: 'idle' })
+      },
+      toggleVoiceAssistant: () => {
+        const { voiceAssistantActive } = get()
+        if (voiceAssistantActive) get().stopVoiceAssistant()
+        else get().startVoiceAssistant()
+      },
 
       // Main View State
       mainView: 'chat',
@@ -3212,7 +3243,8 @@ export const useStore = create<AppState>()(
         rightPanelWidth: state.rightPanelWidth,
         canvasWidth: state.canvasWidth,
         nodeEnabled: state.nodeEnabled,
-        nodePermissions: state.nodePermissions
+        nodePermissions: state.nodePermissions,
+        ttsAutoPlay: state.ttsAutoPlay,
       })
     }
   )

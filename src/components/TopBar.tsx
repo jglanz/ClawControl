@@ -24,7 +24,9 @@ export function TopBar() {
     canvasVisible,
     toggleCanvas,
     mainView,
-    patchCurrentSession
+    patchCurrentSession,
+    voiceAssistantActive,
+    toggleVoiceAssistant,
   } = useStore(useShallow(state => ({
     setSidebarOpen: state.setSidebarOpen,
     toggleTheme: state.toggleTheme,
@@ -47,6 +49,8 @@ export function TopBar() {
     toggleCanvas: state.toggleCanvas,
     mainView: state.mainView,
     patchCurrentSession: state.patchCurrentSession,
+    voiceAssistantActive: state.voiceAssistantActive,
+    toggleVoiceAssistant: state.toggleVoiceAssistant,
   })))
 
   const sessionFastMode = useStore(selectSessionFastMode)
@@ -145,6 +149,20 @@ export function TopBar() {
             <span className="toggle-slider" />
           </label>
         </div>
+
+        <button
+          className={`panel-toggle va-toggle${voiceAssistantActive ? ' active' : ''}`}
+          onClick={toggleVoiceAssistant}
+          aria-label={voiceAssistantActive ? 'Stop Voice Assistant' : 'Start Voice Assistant'}
+          aria-pressed={voiceAssistantActive}
+          title={voiceAssistantActive ? 'Stop Voice Assistant (Super+/)' : 'Start Voice Assistant (Super+/)'}
+        >
+          <svg viewBox="0 0 24 24" fill={voiceAssistantActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" />
+            <path d="M19 11a7 7 0 0 1-14 0" />
+            <path d="M12 18v3" />
+          </svg>
+        </button>
 
         <button
           className="theme-toggle"

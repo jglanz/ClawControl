@@ -74,11 +74,15 @@ export default defineConfig({
       {
         entry: 'electron/main.ts',
         onstart(options) {
-          options.startup()
+          const args = process.env.ELECTRON_INSPECT_BRK
+            ? ['--inspect-brk=9229', '.']
+            : undefined
+          options.startup(args)
         },
         vite: {
           build: {
             outDir: 'dist-electron',
+            sourcemap: true,
             rollupOptions: {
               external: ['electron']
             }
@@ -92,13 +96,17 @@ export default defineConfig({
         },
         vite: {
           build: {
-            outDir: 'dist-electron'
+            outDir: 'dist-electron',
+            sourcemap: true,
           }
         }
       }
     ]),
     renderer()
   ],
+  build: {
+    sourcemap: true,
+  },
   server: {
     host: '127.0.0.1',
     port: 3000,
@@ -108,10 +116,13 @@ export default defineConfig({
       '@': resolve(__dirname, 'src')
     }
   },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{js,ts,jsx,tsx}']
-  }
+  css: {
+    devSourcemap: true,
+  },
+  // test: {
+  //   globals: true,
+  //   environment: 'jsdom',
+  //   setupFiles: ['./src/test/setup.ts'],
+  //   include: ['src/**/*.{test,spec}.{js,ts,jsx,tsx}']
+  // }
 })

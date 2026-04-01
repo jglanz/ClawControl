@@ -7314,3 +7314,130 @@ body.capacitor-mobile .toast-container {
 body.capacitor-mobile .toast {
   max-width: 100%;
 }
+
+/* ===== Voice Assistant Toggle ===== */
+.va-toggle.active {
+  color: var(--accent);
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.va-toggle.active svg {
+  animation: va-pulse 2s ease-in-out infinite;
+}
+
+@keyframes va-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ===== Talk Overlay ===== */
+.talk-overlay {
+  position: fixed;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  pointer-events: auto;
+}
+
+.talk-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-lg) var(--space-xl);
+  background: var(--bg-elevated, #1a1d23);
+  border: 1px solid var(--border-subtle, #2a2d35);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  min-width: 200px;
+}
+
+.talk-phase-indicator {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.talk-mic-icon {
+  width: 32px;
+  height: 32px;
+  position: relative;
+  z-index: 1;
+}
+
+.talk-pulse-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--accent, #6366f1);
+  opacity: 0;
+}
+
+[data-phase="listening"] .talk-pulse-ring {
+  animation: talk-ring-pulse 2s ease-out infinite;
+}
+[data-phase="listening"] .talk-pulse-ring.delay-1 { animation-delay: 0.4s; }
+[data-phase="listening"] .talk-pulse-ring.delay-2 { animation-delay: 0.8s; }
+
+[data-phase="speaking"] .talk-pulse-ring {
+  animation: talk-ring-pulse 1.5s ease-out infinite;
+  border-color: var(--success, #22c55e);
+}
+[data-phase="speaking"] .talk-pulse-ring.delay-1 { animation-delay: 0.3s; }
+[data-phase="speaking"] .talk-pulse-ring.delay-2 { animation-delay: 0.6s; }
+
+[data-phase="transcribing"] .talk-mic-icon,
+[data-phase="waiting"] .talk-mic-icon {
+  animation: talk-thinking 1.5s ease-in-out infinite;
+}
+
+@keyframes talk-ring-pulse {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes talk-thinking {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.talk-phase-label {
+  font-size: 14px;
+  color: var(--text-secondary, #9ca3af);
+  font-family: var(--font-body);
+}
+
+.talk-transcript {
+  font-size: 12px;
+  color: var(--text-tertiary, #6b7280);
+  font-family: var(--font-body);
+  max-width: 300px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.talk-stop-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-md);
+  margin-top: var(--space-xs);
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-body);
+  transition: background var(--transition-fast);
+}
+
+.talk-stop-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+}

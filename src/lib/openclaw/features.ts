@@ -29,3 +29,51 @@ export async function getVoicewake(call: RpcCaller): Promise<any> {
 export async function setVoicewake(call: RpcCaller, params: any): Promise<any> {
     return call('voicewake.set', params)
 }
+
+// Talk mode
+export interface TalkSpeakParams {
+    text: string
+    voiceId?: string
+    modelId?: string
+    outputFormat?: string
+    speed?: number
+    stability?: number
+    similarity?: number
+    style?: number
+    speakerBoost?: boolean
+    seed?: number
+    normalize?: string
+    language?: string
+}
+
+export interface TalkSpeakResult {
+    audioBase64: string
+    provider: string
+    outputFormat?: string
+    voiceCompatible?: boolean
+    mimeType?: string
+    fileExtension?: string
+}
+
+export interface TalkConfig {
+    talk?: {
+        provider?: string
+        voiceId?: string
+        modelId?: string
+        outputFormat?: string
+        interruptOnSpeech?: boolean
+        silenceTimeoutMs?: number
+    }
+    session?: { mainKey?: string }
+    ui?: { seamColor?: string }
+}
+
+export async function talkSpeak(call: RpcCaller, params: TalkSpeakParams): Promise<TalkSpeakResult> {
+    return call('talk.speak', params)
+}
+export async function talkConfig(call: RpcCaller, includeSecrets = false): Promise<{ config: TalkConfig }> {
+    return call('talk.config', { includeSecrets })
+}
+export async function talkMode(call: RpcCaller, enabled: boolean, phase?: string): Promise<any> {
+    return call('talk.mode', { enabled, phase })
+}

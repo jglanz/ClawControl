@@ -10,6 +10,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "npx vite",
+    "dev:debug-main": "ELECTRON_INSPECT_BRK=1 npx vite",
     "postinstall": "npx tsc -p plugins/capacitor-native-websocket/tsconfig.json",
     "build": "npx vite build && npx electron-builder",
     "build:win": "npx vite build && npx electron-builder --win",
@@ -103,7 +104,13 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "dist-electron/**/*.map",
       "build/icon.png"
+    ],
+    "extraResources": [],
+    "asar": true,
+    "asarUnpack": [
+      "dist-electron/**/*.map"
     ],
     "win": {
       "target": [

@@ -1450,6 +1450,10 @@ export class OpenClawClient {
   async getVoicewake(): Promise<any> { return featuresApi.getVoicewake(this._call.bind(this)) }
   async setVoicewake(params: any): Promise<any> { return featuresApi.setVoicewake(this._call.bind(this), params) }
 
+  async talkSpeak(params: featuresApi.TalkSpeakParams): Promise<featuresApi.TalkSpeakResult> { return featuresApi.talkSpeak(this._call.bind(this), params) }
+  async talkConfig(includeSecrets = false): Promise<{ config: featuresApi.TalkConfig }> { return featuresApi.talkConfig(this._call.bind(this), includeSecrets) }
+  async talkMode(enabled: boolean, phase?: string): Promise<any> { return featuresApi.talkMode(this._call.bind(this), enabled, phase) }
+
   // Nodes
   async listNodes(): Promise<Node[]> { return nodesApi.listNodes(this._call.bind(this)) }
   async getExecApprovals(): Promise<nodesApi.ExecApprovalsResponse | null> { return nodesApi.getExecApprovals(this._call.bind(this)) }

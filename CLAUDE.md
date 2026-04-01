@@ -62,7 +62,7 @@ The OpenClaw protocol uses typed frames:
 - `res`: Responses with `ok` boolean and `payload`/`error`
 - `event`: Server-pushed events like `chat`, `agent`, `presence`, `connect.challenge`
 
-Key RPC methods: `sessions.list`, `sessions.spawn`, `sessions.patch`, `sessions.delete`, `chat.send`, `chat.history`, `chat.abort`, `agents.list`, `agent.identity.get`, `agents.files.list`, `agents.files.get`, `agents.files.set`, `config.get`, `config.patch`, `skills.status`, `skills.update`, `skills.install`, `cron.list`, `cron.get`, `cron.update`
+Key RPC methods: `sessions.list`, `sessions.spawn`, `sessions.patch`, `sessions.delete`, `chat.send`, `chat.history`, `chat.abort`, `agents.list`, `agent.identity.get`, `agents.files.list`, `agents.files.get`, `agents.files.set`, `config.get`, `config.patch`, `skills.status`, `skills.update`, `skills.install`, `cron.list`, `cron.get`, `cron.update`, `talk.speak`, `talk.config`, `talk.mode`, `tts.status`, `tts.enable`, `tts.disable`, `voicewake.get`, `voicewake.set`
 
 ### Streaming Architecture
 The client uses **per-session stream isolation** via `Map<string, SessionStreamState>`. Each session independently tracks its stream source (chat vs agent), accumulated text, mode (delta vs cumulative), and content block offsets. This allows multiple agents to stream simultaneously without cross-contaminating text buffers.
@@ -82,6 +82,49 @@ Server event types:
 - `presence` — Agent online/offline status changes
 
 All server events include an optional `sessionKey` field identifying which session they belong to.
+
+### Voice / Speech Architecture
+
+ClawControl implements native voice features for all desktop platforms:
+
+**Speech-to-Text (STT):**
+- **Windows**: System.Speech via PowerShell
+- **Linux/macOS**: whisper.cpp with CUDA GPU acceleration. Records audio via `parec`/`arecord`/`sox`, transcribes via `whisper-cli` with configurable model (default: `ggml-large-v3.bin`)
+- **Mobile**: Capacitor `@capacitor-community/speech-recognition`
+
+**Wake Word Detection:**
+- Server-managed triggers via `voicewake.get`/`voicewake.set` RPC
+- Linux/macOS: whisper.cpp `stream` binary runs continuously, pattern-matches transcriptions against triggers
+- Mobile/Web: Browser `webkitSpeechRecognition` fallback
+
+**Voice Assistant Mode:**
+Continuous conversation loop activated by wake word command ("Hey Jarvis, start voice assistant"), global hotkey (`Super+/`), or UI button:
+1. Listen (record audio with silence detection)
+2. Transcribe (whisper-cli)
+3. Send transcript via `chat.send`
+4. Wait for response
+5. Speak response via `talk.speak` RPC (server-side TTS: ElevenLabs/Edge/OpenAI)
+6. Loop (interrupt-aware if `interruptOnSpeech` enabled)
+
+Deactivated by voice ("stop assistant", "stop jarvis"), hotkey, or UI.
+
+**TTS Playback:**
+- Server-side synthesis via `talk.speak` RPC returns base64 audio
+- Renderer decodes and plays via HTMLAudioElement
+- Auto-play configurable per user preference
+
+**Speech Module Structure (`electron/speech/`):**
+- `detect.ts` — Find whisper binaries, models, recording tools, CUDA
+- `recorder.ts` — Record microphone to WAV (parec/arecord/sox)
+- `stt.ts` — Transcribe WAV via whisper-cli
+- `wake.ts` — Continuous wake detection via whisper stream
+- `assistant.ts` — Voice Assistant listen-transcribe-send loop
+- `index.ts` — IPC handlers, global hotkey registration
+
+**Environment Variables:**
+- `WHISPER_CPP_BINARY` — Path to whisper-cli binary
+- `WHISPER_CPP_STREAM` — Path to whisper stream binary
+- `WHISPER_CPP_MODEL` — Path to GGML model file
 
 ### Component Layout
 ```

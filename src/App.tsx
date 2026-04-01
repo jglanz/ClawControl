@@ -9,6 +9,7 @@ import { RightPanel } from './components/RightPanel'
 import { InputArea } from './components/InputArea'
 import { SettingsModal } from './components/SettingsModal'
 import { CertErrorModal } from './components/CertErrorModal'
+import { TalkOverlay } from './components/TalkOverlay'
 import { SkillDetailView } from './components/SkillDetailView'
 import { CronJobDetailView } from './components/CronJobDetailView'
 import { CreateCronJobView } from './components/CreateCronJobView'
@@ -180,6 +181,9 @@ function App() {
 
       {/* Certificate Error Modal */}
       <CertErrorModal />
+
+      {/* Voice Assistant Overlay */}
+      <TalkOverlay />
 
       {/* Toast Notifications */}
       <ToastContainer />
