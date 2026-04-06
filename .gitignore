@@ -6,6 +6,11 @@ dist/
 dist-electron/
 release/
 
+# AI
+.claude-trace/
+.remember/
+docs/superpowers/
+
 # IDE
 .idea/
 .vscode/

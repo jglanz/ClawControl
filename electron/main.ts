@@ -1,3 +1,5 @@
+process.setSourceMapsEnabled(true)
+
 import { app, BrowserWindow, ipcMain, shell, Menu, safeStorage, Notification, protocol, net, clipboard } from 'electron'
 import { join, resolve, relative } from 'path'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs'

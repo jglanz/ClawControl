@@ -83,6 +83,11 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             sourcemap: true,
+            target: 'esnext',
+            minify: false,
+            commonjsOptions: {
+              sourceMap: true
+            },
             rollupOptions: {
               external: ['electron']
             }
