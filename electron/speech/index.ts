@@ -264,15 +264,10 @@ export function setupSpeechHandlers(mainWindow: BrowserWindow): void {
   })
 
   ipcMain.handle('speech:vaNotifySpeakingDone', () => {
-    log.info('speech:vaNotifySpeakingDone — resuming capture after cooldown')
+    log.info('speech:vaNotifySpeakingDone — resuming capture')
     if (vaActive) {
-      // Brief cooldown so the mic doesn't pick up tail-end of TTS audio
-      setTimeout(() => {
-        if (vaActive && streamManager) {
-          streamManager.enterCapturing()
-          send('speech:vaPhase', 'listening')
-        }
-      }, 800)
+      streamManager?.enterCapturing()
+      send('speech:vaPhase', 'listening')
     }
   })
 
