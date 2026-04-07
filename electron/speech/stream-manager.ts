@@ -128,10 +128,14 @@ export class WhisperStreamManager extends EventEmitter {
 
     const args = [
       '-m', caps.modelPath,
-      '--step', '3000',
-      '--length', '5000',
-      '-t', '4',
+      '--step', '4000',
+      '--length', '10000',
+      '-t', '8',
       '--keep-context',
+      '--max-tokens', '128',
+      '-l', 'en',
+      '--flash-attn',
+      '--vad-thold', '0.6',
     ]
 
     log.info('Starting whisper-stream process', {
