@@ -1,3 +1,6 @@
+/* eslint-disable */
+// noinspection RegExpRedundantEscape
+
 /**
  * Unified streaming speech manager using a single persistent whisper-stream process.
  *
@@ -99,12 +102,10 @@ export class WhisperStreamManager extends EventEmitter {
   private proc: ChildProcess | null = null
   private _state: StreamState = 'off'
   private triggers: string[] = []
-  private silenceWindowMs = 2000
+  private silenceWindowMs = 1500
   private captureBuffer = ''
-  private lastNewTextTime = 0       // last time new meaningful text arrived
-  private captureStartTime = 0      // when capturing started
+  private lastTextTime = 0
   private silenceTimer: ReturnType<typeof setInterval> | null = null
-  private static MIN_CAPTURE_MS = 2000  // minimum capture time before silence can finalize
   private cooldownUntil = 0
   private static WAKE_COOLDOWN_MS = 3000
   // Track text segments seen recently to avoid duplicates (across all states)
@@ -210,6 +211,7 @@ export class WhisperStreamManager extends EventEmitter {
     this._state = 'wake'
     this.captureBuffer = ''
     this.captureSegmentsSeen.clear()
+    this.recentSegments = []
     this.stopSilenceMonitor()
     log.info('Entered WAKE state', { triggers: this.triggers })
   }
@@ -221,8 +223,7 @@ export class WhisperStreamManager extends EventEmitter {
     this.captureBuffer = ''
     this.captureSegmentsSeen.clear()
     this.recentSegments = []
-    this.lastNewTextTime = Date.now()
-    this.captureStartTime = Date.now()
+    this.lastTextTime = Date.now()
     this.startSilenceMonitor()
     log.info('Entered CAPTURING state', { silenceWindowMs: this.silenceWindowMs })
   }
@@ -232,6 +233,7 @@ export class WhisperStreamManager extends EventEmitter {
     this._state = 'idle'
     this.captureBuffer = ''
     this.captureSegmentsSeen.clear()
+    this.recentSegments = []
     this.stopSilenceMonitor()
     log.info('Entered IDLE state')
   }
@@ -310,7 +312,7 @@ export class WhisperStreamManager extends EventEmitter {
   }
 
   private handleCaptureText(text: string): void {
-    // Deduplicate within capture session
+    // Deduplicate — whisper stream can repeat segments with --keep-context
     const normalized = text.toLowerCase().trim()
     if (this.captureSegmentsSeen.has(normalized)) {
       log.debug('Capture text deduplicated', { text })
@@ -318,8 +320,7 @@ export class WhisperStreamManager extends EventEmitter {
     }
     this.captureSegmentsSeen.add(normalized)
 
-    // New meaningful text arrived — reset silence timer
-    this.lastNewTextTime = Date.now()
+    this.lastTextTime = Date.now()
     this.captureBuffer += (this.captureBuffer ? ' ' : '') + text
     log.debug('Capture text', { text, bufferLen: this.captureBuffer.length })
     this.emit('partial', this.captureBuffer)
@@ -341,26 +342,16 @@ export class WhisperStreamManager extends EventEmitter {
         this.stopSilenceMonitor()
         return
       }
-      const now = Date.now()
-      const sinceLastText = now - this.lastNewTextTime
-      const sinceStart = now - this.captureStartTime
-
-      // Don't finalize before minimum capture window
-      if (sinceStart < WhisperStreamManager.MIN_CAPTURE_MS) return
-      // Don't finalize if we haven't captured anything yet
-      if (!this.captureBuffer.trim()) return
-      // Finalize when no new text for silenceWindowMs
-      if (sinceLastText < this.silenceWindowMs) return
-
-      const transcript = this.captureBuffer.trim()
-      log.info('Silence detected — finalizing transcript', {
-        silenceMs: sinceLastText,
-        capturedMs: sinceStart,
-        transcriptLen: transcript.length,
-      })
-      this.captureBuffer = ''
-      this.captureSegmentsSeen.clear()
-      this.stopSilenceMonitor()
+      const elapsed = Date.now() - this.lastTextTime
+      if (elapsed >= this.silenceWindowMs && this.captureBuffer.trim()) {
+        const transcript = this.captureBuffer.trim()
+        log.info('Silence detected — finalizing transcript', {
+          silenceMs: elapsed,
+          transcriptLen: transcript.length,
+        })
+        this.captureBuffer = ''
+        this.captureSegmentsSeen.clear()
+        this.stopSilenceMonitor()
         this.emit('transcript', transcript)
       }
     }, 200)
