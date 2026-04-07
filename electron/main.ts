@@ -636,6 +636,13 @@ ipcMain.handle('crypto:signEd25519', async (_event, privateKeyJwk: JsonWebKey, p
   return signature.toString('base64url')
 })
 
+// --- Logging IPC ---
+ipcMain.on('log:forward', (_event, level: string, category: string, message: string, data?: string) => {
+  const lvl = (['debug', 'info', 'warn', 'error'].includes(level) ? level : 'info') as any
+  logFromRenderer(lvl, category, message, data)
+})
+ipcMain.handle('log:getFilePath', () => getLogFilePath())
+
 // Speech recognition, wake word, and Voice Assistant are handled by the speech module.
 // Handlers are registered in setupSpeechHandlers() called after window creation.
 

@@ -1,6 +1,9 @@
 import { spawn, ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import { detectCapabilities, getSpawnEnv } from './detect'
+import { createLogger } from '../logger'
+
+const log = createLogger('speech:wake')
 
 export interface WakeEvent {
   trigger: string
@@ -36,7 +39,7 @@ export class WakeDetector extends EventEmitter {
   start(triggers: string[], threads = 4): boolean {
     const caps = detectCapabilities()
     if (!caps.streamBinary || !caps.modelPath) {
-      console.error('[speech:wake] Cannot start — stream binary:', caps.streamBinary, 'model:', caps.modelPath)
+      log.error('Cannot start wake detector — missing dependencies', { streamBinary: caps.streamBinary, modelPath: caps.modelPath })
       return false
     }
     this.stop()
@@ -50,8 +53,15 @@ export class WakeDetector extends EventEmitter {
       '--keep-context',
     ]
 
+    log.info('Starting wake detector', { binary: caps.streamBinary, triggers: this.triggers, threads, model: caps.modelPath })
+    log.debug('Stream args', args.join(' '))
+
     this.proc = spawn(caps.streamBinary, args, { stdio: ['ignore', 'pipe', 'pipe'], env: getSpawnEnv() })
+    const pid = this.proc.pid
+    log.info('Wake stream process spawned', { pid })
+
     let buf = ''
+    let stderrBuf = ''
 
     this.proc.stdout?.on('data', (data: Buffer) => {
       buf += data.toString()
@@ -59,23 +69,38 @@ export class WakeDetector extends EventEmitter {
       buf = lines.pop() || ''
       for (const line of lines) {
         const text = line.replace(/\[.*?\]/g, '').trim()
-        if (!text || Date.now() < this.cooldownUntil) continue
+        if (!text) continue
+        if (Date.now() < this.cooldownUntil) {
+          log.debug('Wake text ignored (cooldown)', { text })
+          continue
+        }
+        log.debug('Wake stream text', { text })
         const hit = matchTrigger(text, this.triggers)
         if (hit) {
           this.cooldownUntil = Date.now() + WakeDetector.COOLDOWN_MS
           const ev: WakeEvent = { trigger: hit, text: extractAfter(text, hit), fullText: text }
+          log.info('Wake trigger MATCHED', ev)
           this.emit('wake', ev)
         }
       }
     })
 
-    this.proc.on('close', (code) => {
-      console.warn('[speech:wake] Stream process exited with code', code)
+    this.proc.stderr?.on('data', (data: Buffer) => {
+      const text = data.toString().trimEnd()
+      if (text) {
+        stderrBuf += text + '\n'
+        log.debug(`[wake:stderr pid=${pid}] ${text}`)
+      }
+    })
+
+    this.proc.on('close', (code, signal) => {
+      log.warn('Wake stream process exited', { pid, code, signal, stderrLen: stderrBuf.length })
+      if (stderrBuf.trim()) log.debug('Wake stream stderr at exit', stderrBuf.trim().slice(0, 500))
       this.proc = null
       this.emit('stopped')
     })
     this.proc.on('error', (e) => {
-      console.error('[speech:wake] Stream process error:', e.message)
+      log.error('Wake stream process error', { pid, error: e.message, stack: e.stack })
       this.proc = null
       this.emit('error', e)
     })
@@ -83,12 +108,17 @@ export class WakeDetector extends EventEmitter {
   }
 
   stop(): void {
-    if (this.proc) { this.proc.kill('SIGTERM'); this.proc = null }
+    if (this.proc) {
+      log.info('Stopping wake detector', { pid: this.proc.pid })
+      this.proc.kill('SIGTERM')
+      this.proc = null
+    }
   }
 
   isRunning(): boolean { return this.proc !== null }
 
   updateTriggers(triggers: string[]): void {
     this.triggers = triggers.map(t => t.toLowerCase())
+    log.info('Wake triggers updated', { triggers: this.triggers })
   }
 }

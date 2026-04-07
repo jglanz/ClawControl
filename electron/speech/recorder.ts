@@ -3,6 +3,9 @@ import { join } from 'path'
 import { writeFileSync, existsSync, mkdirSync } from 'fs'
 import os from 'os'
 import { detectCapabilities } from './detect'
+import { createLogger } from '../logger'
+
+const log = createLogger('speech:recorder')
 
 export interface RecordingOptions {
   sampleRate?: number
@@ -47,7 +50,7 @@ export function startRecording(options: RecordingOptions = {}): Promise<Recordin
   const caps = detectCapabilities()
 
   if (!caps.recorder) {
-    console.error('[speech:recorder] No audio recording tool found (parec/arecord/sox)')
+    log.error('No audio recording tool found (parec/arecord/sox)')
     return Promise.reject(new Error('No audio recording tool found. Install pulseaudio-utils or alsa-utils.'))
   }
 
@@ -73,32 +76,51 @@ export function startRecording(options: RecordingOptions = {}): Promise<Recordin
         return reject(new Error('Unknown recorder: ' + caps.recorder))
     }
 
+    log.info('Starting recording', { binary, args: args.join(' '), sampleRate, channels, timeoutMs, wavPath })
     const proc = spawn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'] })
     activeRecording = proc
+    const pid = proc.pid
+    log.info('Recording process spawned', { pid })
+
     const chunks: Buffer[] = []
+    let stderrBuf = ''
 
     proc.stdout?.on('data', (chunk: Buffer) => chunks.push(chunk))
+    proc.stderr?.on('data', (d: Buffer) => {
+      const text = d.toString().trimEnd()
+      if (text) {
+        stderrBuf += text + '\n'
+        log.warn(`[recorder:stderr pid=${pid}] ${text}`)
+      }
+    })
 
-    const timer = setTimeout(() => stopRecording(), timeoutMs)
+    const timer = setTimeout(() => {
+      log.info('Recording timeout reached, stopping', { timeoutMs, pid })
+      stopRecording()
+    }, timeoutMs)
 
-    proc.on('close', () => {
+    proc.on('close', (code, signal) => {
       clearTimeout(timer)
       activeRecording = null
       const raw = Buffer.concat(chunks)
+      log.info('Recording process exited', { pid, code, signal, rawBytes: raw.length, stderrLen: stderrBuf.length })
+
       if (raw.length < 1600) {
-        console.warn('[speech:recorder] Recording too short:', raw.length, 'bytes — no audio captured')
+        log.warn('Recording too short — no audio captured', { rawBytes: raw.length, minRequired: 1600 })
+        if (stderrBuf.trim()) log.warn('Recorder stderr output', stderrBuf.trim())
         reject(new Error('No audio captured'))
         return
       }
       writeFileSync(wavPath, buildWav(raw, sampleRate, channels))
       const durationMs = (raw.length / (sampleRate * channels * 2)) * 1000
+      log.info('Recording saved', { wavPath, durationMs: Math.round(durationMs), rawBytes: raw.length })
       resolve({ wavPath, durationMs })
     })
 
     proc.on('error', (err) => {
       clearTimeout(timer)
       activeRecording = null
-      console.error('[speech:recorder] Recording process error:', err.message)
+      log.error('Recording process spawn error', { pid, error: err.message, stack: err.stack })
       reject(err)
     })
   })
@@ -106,7 +128,10 @@ export function startRecording(options: RecordingOptions = {}): Promise<Recordin
 
 export function stopRecording(): void {
   if (activeRecording) {
+    log.info('Stopping recording process', { pid: activeRecording.pid })
     activeRecording.kill('SIGTERM')
     activeRecording = null
+  } else {
+    log.debug('stopRecording called but no active recording')
   }
 }

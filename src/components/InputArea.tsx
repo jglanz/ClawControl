@@ -155,6 +155,7 @@ export function InputArea() {
 
     // Stop Electron native wake (whisper stream)
     if (hasNativeElectronWake()) {
+      wakeLog.info('Stopping Electron native wake detector')
       await (window as any).electronAPI.wakeStop?.()
     }
 
@@ -386,6 +387,7 @@ export function InputArea() {
     }
     try {
       if (hasNativeElectronWake()) {
+        wakeLog.info('Starting Electron native wake detector', { triggers: wakeTriggersRef.current })
         await (window as any).electronAPI.wakeStart(wakeTriggersRef.current)
       } else if (nativeSpeechAvailableRef.current) {
         await startNativeWakeRecognition()
@@ -635,16 +637,21 @@ export function InputArea() {
     if (getPlatform() !== 'electron' || !api) return
 
     api.onWakeDetected?.((data: { trigger: string; text: string; action: string }) => {
+      wakeLog.info('Electron native wake detected', data)
       if (data.action === 'startAssistant') {
+        wakeLog.info('Wake action: starting Voice Assistant')
         useStore.getState().startVoiceAssistant()
       } else if (data.text) {
+        wakeLog.info('Wake action: sending one-shot message', { text: data.text })
         void useStore.getState().sendMessage(data.text)
       } else {
+        wakeLog.info('Wake action: beginning dictation capture')
         void beginWakeCapture()
       }
     })
 
     api.onHotkeyToggle?.(() => {
+      voiceLog.info('Global hotkey toggle received (Super+/)')
       useStore.getState().toggleVoiceAssistant()
     })
   }, [])
@@ -652,7 +659,8 @@ export function InputArea() {
   // Keep native wake triggers in sync
   useEffect(() => {
     if (hasNativeElectronWake()) {
-      (window as any).electronAPI.wakeUpdateTriggers?.(wakeTriggers)
+      wakeLog.info('Syncing wake triggers to Electron native detector', { wakeTriggers })
+      ;(window as any).electronAPI.wakeUpdateTriggers?.(wakeTriggers)
     }
   }, [wakeTriggers])
 
