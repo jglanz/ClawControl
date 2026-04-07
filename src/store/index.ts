@@ -315,6 +315,10 @@ interface AppState {
   stopVoiceAssistant: () => void
   toggleVoiceAssistant: () => void
 
+  // Keyboard Shortcuts
+  shortcuts: Record<string, string>
+  setShortcut: (action: string, accelerator: string) => void
+
   // Subagents
   activeSubagents: SubagentInfo[]
   startSubagentPolling: () => void
@@ -821,6 +825,15 @@ export const useStore = create<AppState>()(
         if (voiceAssistantActive) get().stopVoiceAssistant()
         else get().startVoiceAssistant()
       },
+
+      // Keyboard Shortcuts
+      shortcuts: {
+        voiceAssistant: 'Super+/',
+        focusInput: 'Super+Shift+/',
+      },
+      setShortcut: (action, accelerator) => set((state) => ({
+        shortcuts: { ...state.shortcuts, [action]: accelerator },
+      })),
 
       // Main View State
       mainView: 'chat',
@@ -3246,6 +3259,7 @@ export const useStore = create<AppState>()(
         nodePermissions: state.nodePermissions,
         ttsAutoPlay: state.ttsAutoPlay,
         voiceAssistantActive: state.voiceAssistantActive,
+        shortcuts: state.shortcuts,
       })
     }
   )

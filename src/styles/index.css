@@ -7376,3 +7376,56 @@ body.capacitor-mobile .toast {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.4); }
 }
+
+/* ===== Shortcut Editor ===== */
+.shortcut-editor h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: var(--space-lg) 0 var(--space-sm);
+  font-family: var(--font-body);
+}
+
+.shortcut-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-sm) 0;
+}
+
+.shortcut-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+}
+
+.key-recorder {
+  min-width: 140px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  background: var(--bg-input, #161b22);
+  border: 1px solid var(--border-subtle, #2a2d35);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.key-recorder:hover {
+  border-color: var(--accent, #6366f1);
+}
+
+.key-recorder.recording {
+  border-color: var(--accent, #6366f1);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+  color: var(--accent);
+}

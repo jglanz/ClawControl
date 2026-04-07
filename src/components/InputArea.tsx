@@ -655,6 +655,14 @@ export function InputArea() {
       useStore.getState().toggleVoiceAssistant()
     })
 
+    api.onFocusInput?.(() => {
+      textareaRef.current?.focus()
+    })
+
+    // Sync stored shortcuts to main process
+    const { shortcuts } = useStore.getState()
+    api.updateShortcuts?.(shortcuts)
+
     // Auto-start VA if it was active when app last closed
     const { voiceAssistantActive } = useStore.getState()
     if (voiceAssistantActive && api.vaStart) {

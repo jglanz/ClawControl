@@ -64,6 +64,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onPartialTranscript: (cb: (text: string) => void) => { ipcRenderer.on('speech:partialTranscript', (_e, t) => cb(t)) },
   onDictationResult: (cb: (data: { text: string }) => void) => { ipcRenderer.on('speech:dictationResult', (_e, d) => cb(d)) },
 
+  // Shortcuts
+  updateShortcuts: (shortcuts: Record<string, string>) => ipcRenderer.invoke('shortcuts:update', shortcuts),
+  onFocusInput: (cb: () => void) => { ipcRenderer.on('app:focusInput', () => cb()) },
+
   // Popout auth
   logForward: (level: string, category: string, message: string, data?: string) =>
     ipcRenderer.send('log:forward', level, category, message, data),
@@ -129,6 +133,9 @@ declare global {
       onHotkeyToggle: (cb: () => void) => void
       onPartialTranscript: (cb: (text: string) => void) => void
       onDictationResult: (cb: (data: { text: string }) => void) => void
+
+      updateShortcuts: (shortcuts: Record<string, string>) => Promise<void>
+      onFocusInput: (cb: () => void) => void
 
       onPopoutAuthToken: (callback: (token: string) => void) => void
       platform: NodeJS.Platform

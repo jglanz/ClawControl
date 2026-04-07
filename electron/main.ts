@@ -1,6 +1,6 @@
 process.setSourceMapsEnabled(true)
 
-import { app, BrowserWindow, ipcMain, shell, Menu, safeStorage, Notification, protocol, net, clipboard } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, Menu, safeStorage, Notification, protocol, net, clipboard, globalShortcut } from 'electron'
 import { join, resolve, relative } from 'path'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs'
 import { spawn, ChildProcess } from 'child_process'
@@ -664,6 +664,34 @@ ipcMain.on('log:forward', (_event, level: string, category: string, message: str
   logFromRenderer(lvl, category, message, data)
 })
 ipcMain.handle('log:getFilePath', () => getLogFilePath())
+
+ipcMain.handle('shortcuts:update', (_event, shortcuts: Record<string, string>) => {
+  log.info('Updating global shortcuts', shortcuts)
+  globalShortcut.unregisterAll()
+
+  for (const [action, accelerator] of Object.entries(shortcuts)) {
+    if (!accelerator) continue
+    try {
+      if (action === 'voiceAssistant') {
+        globalShortcut.register(accelerator, () => {
+          mainWindow?.webContents.send('speech:hotkeyToggle')
+        })
+      } else if (action === 'focusInput') {
+        globalShortcut.register(accelerator, () => {
+          if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore()
+            mainWindow.show()
+            mainWindow.focus()
+            mainWindow.webContents.send('app:focusInput')
+          }
+        })
+      }
+      log.info(`Registered shortcut: ${action} → ${accelerator}`)
+    } catch (err) {
+      log.warn(`Failed to register shortcut ${action} → ${accelerator}`, { error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+})
 
 // Speech recognition, wake word, and Voice Assistant are handled by the speech module.
 // Handlers are registered in setupSpeechHandlers() called after window creation.

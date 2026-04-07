@@ -3,6 +3,7 @@ import { useStore } from '../store'
 import { getPlatform, openExternal } from '../lib/platform'
 import { clearDeviceToken } from '../lib/device-identity'
 import { NodePermissionsDialog } from './NodePermissionsDialog'
+import { ShortcutEditor } from './ShortcutEditor'
 import { ConfirmDialog } from './ConfirmDialog'
 import { showToast } from './ToastContainer'
 
@@ -710,6 +711,8 @@ export function SettingsModal() {
             open={showNodePermissions}
             onClose={() => setShowNodePermissions(false)}
           />
+
+          <ShortcutEditor />
 
           {connected && (
             <div className="form-group" style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '16px' }}>

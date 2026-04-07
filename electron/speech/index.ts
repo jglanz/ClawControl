@@ -7,7 +7,7 @@
  * text that follows a wake trigger.
  */
 
-import { ipcMain, BrowserWindow, globalShortcut } from 'electron'
+import { ipcMain, BrowserWindow } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import { detectCapabilities, getSetupInstructions } from './detect'
 import { recognizeSpeech, stopTranscription } from './stt'
@@ -230,16 +230,6 @@ export function setupSpeechHandlers(mainWindow: BrowserWindow): void {
     send('speech:vaPhase', 'waiting')
   })
 
-  // ── Global hotkey ─────────────────────────────────────────────────────────
-  try {
-    globalShortcut.register('Super+/', () => {
-      log.info('Global hotkey Super+/ pressed')
-      send('speech:hotkeyToggle')
-    })
-    log.info('Global hotkey Super+/ registered')
-  } catch (err) {
-    log.warn('Failed to register Super+/ hotkey', { error: err instanceof Error ? err.message : String(err) })
-  }
 }
 
 export function cleanupSpeech(): void {
@@ -247,7 +237,4 @@ export function cleanupSpeech(): void {
   streamManager?.stop()
   streamManager = null
   vaActive = false
-  try { globalShortcut.unregisterAll() } catch (err) {
-    log.warn('Failed to unregister global shortcuts', { error: err instanceof Error ? err.message : String(err) })
-  }
 }
