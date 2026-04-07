@@ -38,7 +38,17 @@ const STOP_COMMANDS = ['stop assistant', 'stop voice', 'stop listening']
 const ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]|\x1b\][^\x07]*\x07|\r/g
 
 // Whisper hallucinates these during silence/background noise
-const HALLUCINATION_RE = /^\s*(thank you\.?|thanks for watching\.?|subscribe\.?|you\.?|\.+|,+|\s+)$/i
+const HALLUCINATION_PHRASES = [
+  'thank you', 'thanks for watching', 'subscribe', 'you', 'yeah',
+  'yes', 'no', 'okay', 'ok', 'bye', 'goodbye', 'hmm', 'uh', 'um',
+  'oh', 'ah', 'so', 'well', 'right', 'the end', 'thanks',
+  'please subscribe', 'like and subscribe', 'see you next time',
+  'i\'ll see you in the next video', 'subtitles by',
+]
+const HALLUCINATION_RE = new RegExp(
+  `^\\s*(${HALLUCINATION_PHRASES.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})[.!?,\\s]*$`,
+  'i',
+)
 
 function stripAnsi(s: string): string {
   return s.replace(ANSI_RE, '')
