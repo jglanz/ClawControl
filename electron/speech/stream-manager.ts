@@ -105,8 +105,10 @@ export class WhisperStreamManager extends EventEmitter {
   private silenceTimer: ReturnType<typeof setInterval> | null = null
   private cooldownUntil = 0
   private static WAKE_COOLDOWN_MS = 3000
-  // Track text segments seen in this capturing session to avoid duplicates
+  // Track text segments seen recently to avoid duplicates (across all states)
   private captureSegmentsSeen = new Set<string>()
+  private recentSegments: { text: string; time: number }[] = []
+  private static DEDUP_WINDOW_MS = 15000
 
   get state(): StreamState { return this._state }
 
@@ -131,11 +133,10 @@ export class WhisperStreamManager extends EventEmitter {
       '--step', '4000',
       '--length', '10000',
       '-t', '8',
-      '--keep-context',
       '--max-tokens', '128',
       '-l', 'en',
       '--flash-attn',
-      '--vad-thold', '0.6',
+      '--vad-thold', '0.8',
     ]
 
     log.info('Starting whisper-stream process', {
@@ -217,6 +218,7 @@ export class WhisperStreamManager extends EventEmitter {
     this._state = 'capturing'
     this.captureBuffer = ''
     this.captureSegmentsSeen.clear()
+    this.recentSegments = []
     this.lastTextTime = Date.now()
     this.startSilenceMonitor()
     log.info('Entered CAPTURING state', { silenceWindowMs: this.silenceWindowMs })
@@ -256,6 +258,15 @@ export class WhisperStreamManager extends EventEmitter {
       log.debug('Filtered hallucination', { text })
       return
     }
+    // Global dedup — ignore text repeated within the dedup window
+    const normalized = text.toLowerCase().trim()
+    const now = Date.now()
+    this.recentSegments = this.recentSegments.filter(s => now - s.time < WhisperStreamManager.DEDUP_WINDOW_MS)
+    if (this.recentSegments.some(s => s.text === normalized)) {
+      log.debug('Filtered duplicate segment', { text })
+      return
+    }
+    this.recentSegments.push({ text: normalized, time: now })
 
     switch (this._state) {
       case 'wake':
