@@ -34,6 +34,16 @@ const VA_ACTIVATE_COMMANDS = [
 
 const STOP_COMMANDS = ['stop assistant', 'stop voice', 'stop listening']
 
+// ANSI escape sequences: CSI codes, OSC, cursor movement, etc.
+const ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]|\x1b\][^\x07]*\x07|\r/g
+
+// Whisper hallucinates these during silence/background noise
+const HALLUCINATION_RE = /^\s*(thank you\.?|thanks for watching\.?|subscribe\.?|you\.?|\.+|,+|\s+)$/i
+
+function stripAnsi(s: string): string {
+  return s.replace(ANSI_RE, '')
+}
+
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -224,9 +234,14 @@ export class WhisperStreamManager extends EventEmitter {
   // ── Private ───────────────────────────────────────────────────────────────
 
   private handleLine(raw: string): void {
-    // Strip timestamps like [00:00:00.000 --> 00:00:03.000] and bracket markers
-    const text = raw.replace(/\[.*?\]/g, '').trim()
+    // Strip ANSI escapes, timestamps, and bracket markers
+    const text = stripAnsi(raw).replace(/\[.*?\]/g, '').trim()
     if (!text) return
+    // Filter whisper hallucinations during silence
+    if (HALLUCINATION_RE.test(text)) {
+      log.debug('Filtered hallucination', { text })
+      return
+    }
 
     switch (this._state) {
       case 'wake':
