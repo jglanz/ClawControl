@@ -6,20 +6,7 @@ import { createLogger } from '../lib/logger'
 
 const log = createLogger('talk-overlay')
 
-const PHASE_LABELS: Record<string, string> = {
-  listening: 'Listening...',
-  transcribing: 'Transcribing...',
-  waiting: 'Thinking...',
-  speaking: 'Speaking...',
-  idle: '',
-}
-
-export function TalkOverlay() {
-  const {
-    voiceAssistantActive,
-    voiceAssistantPhase,
-    stopVoiceAssistant,
-  } = useStore()
+export function VoiceAssistantBridge() {
   const lastTranscriptRef = useRef('')
   const wiredRef = useRef(false)
   const api = (window as any).electronAPI
@@ -114,32 +101,5 @@ export function TalkOverlay() {
     }
   }
 
-  if (!voiceAssistantActive) return null
-
-  return (
-    <div className="talk-overlay" data-phase={voiceAssistantPhase}>
-      <div className="talk-overlay-content">
-        <div className="talk-phase-indicator">
-          <div className="talk-pulse-ring" />
-          <div className="talk-pulse-ring delay-1" />
-          <div className="talk-pulse-ring delay-2" />
-          <svg className="talk-mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" />
-            <path d="M19 11a7 7 0 0 1-14 0" />
-            <path d="M12 18v3" />
-          </svg>
-        </div>
-        <span className="talk-phase-label">{PHASE_LABELS[voiceAssistantPhase] || ''}</span>
-        {lastTranscriptRef.current && voiceAssistantPhase !== 'listening' && (
-          <span className="talk-transcript">{lastTranscriptRef.current}</span>
-        )}
-        <button className="talk-stop-btn" onClick={stopVoiceAssistant} aria-label="Stop Voice Assistant">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
-            <rect x="6" y="6" width="12" height="12" rx="2" />
-          </svg>
-          Stop
-        </button>
-      </div>
-    </div>
-  )
+  return null
 }

@@ -26,6 +26,7 @@ export function TopBar() {
     mainView,
     patchCurrentSession,
     voiceAssistantActive,
+    voiceAssistantPhase,
     toggleVoiceAssistant,
   } = useStore(useShallow(state => ({
     setSidebarOpen: state.setSidebarOpen,
@@ -50,6 +51,7 @@ export function TopBar() {
     mainView: state.mainView,
     patchCurrentSession: state.patchCurrentSession,
     voiceAssistantActive: state.voiceAssistantActive,
+    voiceAssistantPhase: state.voiceAssistantPhase,
     toggleVoiceAssistant: state.toggleVoiceAssistant,
   })))
 
@@ -163,6 +165,15 @@ export function TopBar() {
             <path d="M12 18v3" />
           </svg>
         </button>
+
+        {voiceAssistantActive && (
+          <span className="va-status-badge" data-phase={voiceAssistantPhase}>
+            {voiceAssistantPhase === 'listening' ? 'Listening...' :
+             voiceAssistantPhase === 'waiting' ? 'Thinking...' :
+             voiceAssistantPhase === 'speaking' ? 'Speaking...' :
+             voiceAssistantPhase === 'transcribing' ? 'Processing...' : 'VA Active'}
+          </span>
+        )}
 
         <button
           className="theme-toggle"
