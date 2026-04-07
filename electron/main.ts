@@ -8,6 +8,7 @@ import crypto from 'crypto'
 import os from 'os'
 import { initLogger, createLogger, logFromRenderer, getLogFilePath } from './logger'
 import { setupSpeechHandlers, cleanupSpeech } from './speech'
+import { loadWindowState, saveWindowState } from './window-state'
 
 const log = createLogger('app')
 const speechLog = createLogger('speech')
@@ -71,9 +72,13 @@ function createWindow() {
   // Remove the default menu bar (File, Edit, View, Window, Help)
   Menu.setApplicationMenu(null)
 
+  const state = loadWindowState()
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    x: state.x,
+    y: state.y,
+    width: state.width,
+    height: state.height,
     minWidth: 800,
     minHeight: 600,
     icon: join(__dirname, '../build/icon.png'),
@@ -87,6 +92,23 @@ function createWindow() {
     frame: process.platform === 'darwin' ? true : true,
     backgroundColor: '#0d1117'
   })
+
+  if (state.maximized) mainWindow.maximize()
+
+  // Save window state on move/resize/close
+  const saveBounds = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    const maximized = mainWindow.isMaximized()
+    if (!maximized) {
+      const bounds = mainWindow.getBounds()
+      saveWindowState({ ...bounds, maximized: false })
+    } else {
+      saveWindowState({ ...state, maximized: true })
+    }
+  }
+  mainWindow.on('resize', saveBounds)
+  mainWindow.on('move', saveBounds)
+  mainWindow.on('close', saveBounds)
 
   // Grant microphone permission for speech recognition
   mainWindow.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
