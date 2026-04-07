@@ -61,6 +61,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onVAStopped: (cb: () => void) => { ipcRenderer.on('speech:vaStopped', () => cb()) },
   onVAError: (cb: (msg: string) => void) => { ipcRenderer.on('speech:vaError', (_e, m) => cb(m)) },
   onHotkeyToggle: (cb: () => void) => { ipcRenderer.on('speech:hotkeyToggle', () => cb()) },
+  onPartialTranscript: (cb: (text: string) => void) => { ipcRenderer.on('speech:partialTranscript', (_e, t) => cb(t)) },
+  onDictationResult: (cb: (data: { text: string }) => void) => { ipcRenderer.on('speech:dictationResult', (_e, d) => cb(d)) },
 
   // Popout auth
   logForward: (level: string, category: string, message: string, data?: string) =>
@@ -125,6 +127,8 @@ declare global {
       onVAStopped: (cb: () => void) => void
       onVAError: (cb: (msg: string) => void) => void
       onHotkeyToggle: (cb: () => void) => void
+      onPartialTranscript: (cb: (text: string) => void) => void
+      onDictationResult: (cb: (data: { text: string }) => void) => void
 
       onPopoutAuthToken: (callback: (token: string) => void) => void
       platform: NodeJS.Platform
