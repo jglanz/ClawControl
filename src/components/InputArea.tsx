@@ -654,6 +654,12 @@ export function InputArea() {
       voiceLog.info('Global hotkey toggle received (Super+/)')
       useStore.getState().toggleVoiceAssistant()
     })
+
+    // Auto-start VA if it was active when app last closed
+    const { voiceAssistantActive } = useStore.getState()
+    if (voiceAssistantActive && api.vaStart) {
+      api.vaStart()
+    }
   }, [])
 
   // Keep native wake triggers in sync

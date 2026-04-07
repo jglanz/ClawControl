@@ -3245,6 +3245,7 @@ export const useStore = create<AppState>()(
         nodeEnabled: state.nodeEnabled,
         nodePermissions: state.nodePermissions,
         ttsAutoPlay: state.ttsAutoPlay,
+        voiceAssistantActive: state.voiceAssistantActive,
       })
     }
   )
