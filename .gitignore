@@ -1,3 +1,6 @@
+.ai/
+*.tsbuildinfo
+
 # Dependencies
 node_modules/
 

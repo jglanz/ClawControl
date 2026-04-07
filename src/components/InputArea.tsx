@@ -3,6 +3,11 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition'
 import { useStore, selectIsStreaming } from '../store'
 import { getPlatform, isNativeMobile } from '../lib/platform'
 import { getSlashCommandCompletions, type SlashCommandDef } from '../lib/slash-commands'
+import { createLogger } from '../lib/logger'
+
+const wakeLog = createLogger('wake')
+const dictLog = createLogger('dictation')
+const voiceLog = createLogger('voice')
 
 type BrowserSpeechRecognition = {
   lang: string
@@ -145,6 +150,7 @@ export function InputArea() {
   const hasNativeElectronWake = () => getPlatform() === 'electron' && !!(window as any).electronAPI?.wakeStart
 
   const stopWakeRecognition = async () => {
+    wakeLog.debug('stopWakeRecognition called')
     clearWakeRestartTimer()
 
     // Stop Electron native wake (whisper stream)
@@ -154,6 +160,7 @@ export function InputArea() {
 
     const wakeBrowser = wakeBrowserRecognitionRef.current
     if (wakeBrowser) {
+      wakeLog.info('Stopping browser wake recognition')
       wakeBrowser.onstart = null
       wakeBrowser.onend = null
       wakeBrowser.onerror = null
@@ -163,11 +170,13 @@ export function InputArea() {
     }
 
     if (isNativeMobile() && nativeModeRef.current === 'wake') {
+      wakeLog.info('Stopping native mobile wake recognition')
       try {
         const { listening } = await SpeechRecognition.isListening()
+        wakeLog.debug('Native listening state before stop', { listening })
         if (listening) await SpeechRecognition.stop()
-      } catch {
-        // ignore
+      } catch (err) {
+        wakeLog.warn('Error stopping native wake recognition', err)
       }
       await SpeechRecognition.removeAllListeners().catch(() => {})
       nativeModeRef.current = 'none'
@@ -175,8 +184,10 @@ export function InputArea() {
   }
 
   const stopDictationRecognition = async () => {
+    dictLog.debug('stopDictationRecognition called')
     const dictationBrowser = dictationBrowserRecognitionRef.current
     if (dictationBrowser) {
+      dictLog.info('Stopping browser dictation recognition')
       dictationBrowser.onstart = null
       dictationBrowser.onend = null
       dictationBrowser.onerror = null
@@ -186,11 +197,13 @@ export function InputArea() {
     }
 
     if (isNativeMobile() && nativeModeRef.current === 'dictation') {
+      dictLog.info('Stopping native mobile dictation')
       try {
         const { listening } = await SpeechRecognition.isListening()
+        dictLog.debug('Native listening state before stop', { listening })
         if (listening) await SpeechRecognition.stop()
-      } catch {
-        // ignore
+      } catch (err) {
+        dictLog.warn('Error stopping native dictation', err)
       }
       await SpeechRecognition.removeAllListeners().catch(() => {})
       nativeModeRef.current = 'none'
@@ -218,17 +231,25 @@ export function InputArea() {
   }
 
   const beginWakeCapture = async () => {
-    if (!shouldListenWake()) return
+    wakeLog.info('Wake trigger detected — beginning capture')
+    if (!shouldListenWake()) {
+      wakeLog.debug('shouldListenWake() returned false, aborting capture')
+      return
+    }
     wakeCooldownUntilRef.current = Date.now() + WAKE_COOLDOWN_MS
+    wakeLog.debug('Set wake cooldown', { cooldownUntil: new Date(wakeCooldownUntilRef.current).toISOString() })
     await stopWakeRecognition()
     try {
       if (nativeSpeechAvailableRef.current) {
+        wakeLog.info('Starting native dictation for wake capture')
         await startNativeDictation()
       } else {
+        wakeLog.info('Starting browser dictation for wake capture')
         startBrowserDictation()
       }
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : 'Voice input failed. Please try again.'
+      wakeLog.error('Wake capture failed', { error: errMsg })
       setVoiceError(errMsg)
       setIsListening(false)
       nativeModeRef.current = 'none'
@@ -237,10 +258,17 @@ export function InputArea() {
   }
 
   const startBrowserWakeRecognition = () => {
-    if (wakeBrowserRecognitionRef.current) return
+    if (wakeBrowserRecognitionRef.current) {
+      wakeLog.debug('Browser wake recognition already active, skipping start')
+      return
+    }
     const ctor = getBrowserSpeechRecognitionCtor()
-    if (!ctor) return
+    if (!ctor) {
+      wakeLog.warn('No browser SpeechRecognition API available')
+      return
+    }
 
+    wakeLog.info('Starting browser wake recognition (continuous)')
     const recognition = new ctor()
     recognition.lang = 'en-US'
     recognition.continuous = true
@@ -254,19 +282,25 @@ export function InputArea() {
         .join(' ')
         .trim()
       if (!transcript) return
+      wakeLog.debug('Wake transcript received', { transcript, triggers: wakeTriggersRef.current })
       if (containsWakeTrigger(transcript, wakeTriggersRef.current)) {
+        wakeLog.info('Wake trigger matched!', { transcript })
         void beginWakeCapture()
       }
     }
 
-    recognition.onerror = () => {
+    recognition.onerror = (event: any) => {
+      const errorCode = event?.error || 'unknown'
+      wakeLog.warn('Browser wake recognition error', { error: errorCode })
       wakeBrowserRecognitionRef.current = null
       if (shouldListenWake()) scheduleWakeRestart()
     }
 
     recognition.onend = () => {
+      wakeLog.debug('Browser wake recognition ended')
       wakeBrowserRecognitionRef.current = null
       if (shouldListenWake() && Date.now() >= wakeCooldownUntilRef.current) {
+        wakeLog.debug('Scheduling wake restart after end')
         scheduleWakeRestart()
       }
     }
@@ -274,18 +308,25 @@ export function InputArea() {
     wakeBrowserRecognitionRef.current = recognition
     try {
       recognition.start()
-    } catch {
+      wakeLog.info('Browser wake recognition started successfully')
+    } catch (err) {
+      wakeLog.error('Failed to start browser wake recognition', err)
       wakeBrowserRecognitionRef.current = null
     }
   }
 
   const startNativeWakeRecognition = async () => {
-    if (nativeModeRef.current !== 'none') return
+    if (nativeModeRef.current !== 'none') {
+      wakeLog.debug('Native mode is not none, skipping native wake start', { mode: nativeModeRef.current })
+      return
+    }
     if (Date.now() < wakeCooldownUntilRef.current) {
+      wakeLog.debug('Still in wake cooldown, scheduling restart')
       scheduleWakeRestart()
       return
     }
 
+    wakeLog.info('Starting native wake recognition')
     await ensureNativePermissions()
     nativeModeRef.current = 'wake'
     await SpeechRecognition.removeAllListeners().catch(() => {})
@@ -294,12 +335,15 @@ export function InputArea() {
       if (!shouldListenWake() || Date.now() < wakeCooldownUntilRef.current) return
       const transcript = (data.matches || []).join(' ').trim()
       if (!transcript) return
+      wakeLog.debug('Native wake partial result', { transcript })
       if (containsWakeTrigger(transcript, wakeTriggersRef.current)) {
+        wakeLog.info('Native wake trigger matched!', { transcript })
         void beginWakeCapture()
       }
     })
 
     await SpeechRecognition.addListener('listeningState', ({ status }) => {
+      wakeLog.debug('Native wake listeningState changed', { status, mode: nativeModeRef.current })
       if (status === 'stopped' && nativeModeRef.current === 'wake') {
         nativeModeRef.current = 'none'
         if (shouldListenWake() && Date.now() >= wakeCooldownUntilRef.current) {
@@ -315,7 +359,9 @@ export function InputArea() {
         popup: false,
         partialResults: true,
       })
-    } catch {
+      wakeLog.info('Native wake recognition started successfully')
+    } catch (err) {
+      wakeLog.error('Failed to start native wake recognition', err)
       nativeModeRef.current = 'none'
       await SpeechRecognition.removeAllListeners().catch(() => {})
       if (shouldListenWake()) scheduleWakeRestart()
@@ -323,8 +369,18 @@ export function InputArea() {
   }
 
   const maybeStartWakeRecognition = async () => {
-    if (!shouldListenWake()) return
+    if (!shouldListenWake()) {
+      wakeLog.debug('maybeStartWakeRecognition: conditions not met', {
+        wakeEnabled: wakeEnabledRef.current,
+        voiceSupported: voiceSupportedRef.current,
+        connected: connectedRef.current,
+        isStreaming: isStreamingRef.current,
+        isListening: isListeningRef.current,
+      })
+      return
+    }
     if (Date.now() < wakeCooldownUntilRef.current) {
+      wakeLog.debug('maybeStartWakeRecognition: in cooldown, scheduling restart')
       scheduleWakeRestart()
       return
     }
@@ -336,14 +392,16 @@ export function InputArea() {
       } else {
         startBrowserWakeRecognition()
       }
-    } catch {
-      // No-op: wake listening is best-effort.
+    } catch (err) {
+      wakeLog.warn('maybeStartWakeRecognition: best-effort wake start failed', err)
     }
   }
 
   const startBrowserDictation = () => {
+    dictLog.info('Starting browser dictation')
     const ctor = getBrowserSpeechRecognitionCtor()
     if (!ctor) {
+      dictLog.error('No browser SpeechRecognition API available')
       throw new Error('Speech recognition is not available on this platform.')
     }
 
@@ -355,6 +413,7 @@ export function InputArea() {
     recognition.maxAlternatives = 1
 
     recognition.onstart = () => {
+      dictLog.info('Browser dictation started')
       setIsListening(true)
       setVoiceError(null)
     }
@@ -365,13 +424,14 @@ export function InputArea() {
         .join(' ')
         .trim()
       if (!transcript) return
+      dictLog.debug('Browser dictation result', { transcript, isFinal: event.results?.[0]?.isFinal })
       setMessage(joinDictatedText(messageBeforeDictationRef.current, transcript).slice(0, maxLength))
       setVoiceError(null)
     }
 
     recognition.onerror = (event: any) => {
       const code = event?.error || 'unknown'
-      console.warn('Speech recognition error:', event)
+      dictLog.warn('Browser dictation error', { error: code, message: event?.message })
       const messages: Record<string, string> = {
         'not-allowed': 'Microphone access was denied. Please allow microphone permission.',
         'service-not-allowed': 'Speech recognition service is not available.',
@@ -387,6 +447,7 @@ export function InputArea() {
     }
 
     recognition.onend = () => {
+      dictLog.debug('Browser dictation ended')
       setIsListening(false)
       dictationBrowserRecognitionRef.current = null
       void maybeStartWakeRecognition()
@@ -394,9 +455,11 @@ export function InputArea() {
 
     dictationBrowserRecognitionRef.current = recognition
     recognition.start()
+    dictLog.info('Browser dictation start() called')
   }
 
   const startNativeDictation = async () => {
+    dictLog.info('Starting native dictation')
     await ensureNativePermissions()
     await SpeechRecognition.removeAllListeners().catch(() => {})
     nativeModeRef.current = 'dictation'
@@ -405,17 +468,23 @@ export function InputArea() {
     setVoiceError(null)
 
     try {
-      const result = await SpeechRecognition.start({
+      const opts = {
         language: 'en-US',
         maxResults: 1,
         prompt: 'Speak now',
         popup: getPlatform() === 'android',
         partialResults: false,
-      })
+      }
+      dictLog.debug('Native dictation start options', opts)
+      const result = await SpeechRecognition.start(opts)
+      dictLog.info('Native dictation result', { matches: result.matches })
       const transcript = result.matches?.[0]?.trim()
       if (transcript) {
         setMessage(joinDictatedText(messageBeforeDictationRef.current, transcript).slice(0, maxLength))
       }
+    } catch (err) {
+      dictLog.error('Native dictation error', err)
+      throw err
     } finally {
       await SpeechRecognition.removeAllListeners().catch(() => {})
       nativeModeRef.current = 'none'
@@ -425,19 +494,29 @@ export function InputArea() {
   }
 
   const startElectronDictation = async () => {
+    dictLog.info('Starting Electron dictation (IPC → main process)')
     const api = (window as any).electronAPI
-    if (!api?.speechRecognize) throw new Error('Electron speech API not available.')
+    if (!api?.speechRecognize) {
+      dictLog.error('electronAPI.speechRecognize not available')
+      throw new Error('Electron speech API not available.')
+    }
     messageBeforeDictationRef.current = message
     setIsListening(true)
     setVoiceError(null)
     try {
+      dictLog.debug('Calling electronAPI.speechRecognize(15)')
       const result = await api.speechRecognize(15)
+      dictLog.info('Electron dictation IPC result', result)
       if (result.error) {
+        dictLog.warn('Electron speech returned error', { error: result.error })
         throw new Error(result.error)
       }
       const transcript = result.text?.trim()
       if (transcript) {
+        dictLog.info('Electron dictation transcript', { transcript })
         setMessage(joinDictatedText(messageBeforeDictationRef.current, transcript).slice(0, maxLength))
+      } else {
+        dictLog.debug('Electron dictation returned empty text')
       }
     } finally {
       setIsListening(false)
@@ -446,6 +525,7 @@ export function InputArea() {
   }
 
   const stopElectronDictation = async () => {
+    dictLog.info('Stopping Electron dictation')
     const api = (window as any).electronAPI
     if (api?.speechStop) {
       await api.speechStop()
@@ -457,17 +537,20 @@ export function InputArea() {
     let cancelled = false
 
     const detectVoiceSupport = async () => {
-      // Electron: use native speech (whisper-cli on Linux/macOS, System.Speech on Windows)
+      voiceLog.info('Detecting voice support', { platform: getPlatform(), isNativeMobile: isNativeMobile() })
+
+      // Check Electron native speech (Windows System.Speech)
       if (getPlatform() === 'electron' && (window as any).electronAPI?.speechAvailable) {
         try {
           const available = await (window as any).electronAPI.speechAvailable()
+          voiceLog.info('Electron speech available check', { available })
           if (available) {
             electronSpeechAvailableRef.current = true
             if (!cancelled) setVoiceSupported(true)
             return
           }
-        } catch {
-          // Fall through
+        } catch (err) {
+          voiceLog.warn('Electron speech available check failed', err)
         }
         // Electron's Chromium doesn't include Google speech service, so browser
         // webkitSpeechRecognition will always fail with 'network'. Don't fall
@@ -479,17 +562,20 @@ export function InputArea() {
       if (isNativeMobile()) {
         try {
           const { available } = await SpeechRecognition.available()
+          voiceLog.info('Native mobile speech available check', { available })
           if (available) {
             nativeSpeechAvailableRef.current = true
             if (!cancelled) setVoiceSupported(true)
             return
           }
         } catch (err) {
-          console.warn('Native speech recognition not available, trying browser fallback:', err)
+          voiceLog.warn('Native speech recognition not available, trying browser fallback', err)
         }
-        // Fall through to browser check — Android WebView often supports webkitSpeechRecognition
       }
-      if (!cancelled) setVoiceSupported(Boolean(getBrowserSpeechRecognitionCtor()))
+
+      const hasBrowserApi = Boolean(getBrowserSpeechRecognitionCtor())
+      voiceLog.info('Browser SpeechRecognition API check', { available: hasBrowserApi })
+      if (!cancelled) setVoiceSupported(hasBrowserApi)
     }
 
     detectVoiceSupport()
@@ -505,17 +591,20 @@ export function InputArea() {
 
     const syncWakeConfig = async () => {
       try {
+        wakeLog.info('Syncing wake config from server')
         const status = await client.getVoicewake()
         if (cancelled) return
+        wakeLog.info('Wake config received', { enabled: status?.enabled, triggers: status?.triggers })
         setWakeEnabled(Boolean(status?.enabled))
         setWakeTriggers(normalizeWakeTriggers(status?.triggers))
-      } catch {
-        // leave defaults
+      } catch (err) {
+        wakeLog.warn('Failed to sync wake config, using defaults', err)
       }
     }
 
     const onWakeChanged = (payload: any) => {
       if (!payload) return
+      wakeLog.info('Wake config changed event', { triggers: payload?.triggers })
       setWakeTriggers(normalizeWakeTriggers(payload?.triggers))
     }
 
@@ -709,9 +798,14 @@ export function InputArea() {
   }
 
   const handleVoiceInput = async () => {
-    if (!voiceSupported || isStreaming) return
+    voiceLog.info('handleVoiceInput called', { voiceSupported, isStreaming, isListening })
+    if (!voiceSupported || isStreaming) {
+      voiceLog.debug('Voice input blocked', { voiceSupported, isStreaming })
+      return
+    }
 
     if (isListening) {
+      voiceLog.info('Stopping current listening session')
       if (electronSpeechAvailableRef.current) {
         await stopElectronDictation()
       } else {
@@ -724,14 +818,18 @@ export function InputArea() {
     try {
       await stopWakeRecognition()
       if (electronSpeechAvailableRef.current) {
+        voiceLog.info('Using Electron speech backend')
         await startElectronDictation()
       } else if (nativeSpeechAvailableRef.current) {
+        voiceLog.info('Using native mobile speech backend')
         await startNativeDictation()
       } else {
+        voiceLog.info('Using browser Web Speech API backend')
         startBrowserDictation()
       }
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : 'Voice input failed. Please try again.'
+      voiceLog.error('handleVoiceInput failed', { error: errMsg })
       setVoiceError(errMsg)
       setIsListening(false)
       nativeModeRef.current = 'none'

@@ -6,7 +6,12 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from '
 import { spawn, ChildProcess } from 'child_process'
 import crypto from 'crypto'
 import os from 'os'
+import { initLogger, createLogger, logFromRenderer, getLogFilePath } from './logger'
 import { setupSpeechHandlers, cleanupSpeech } from './speech'
+
+const log = createLogger('app')
+const speechLog = createLogger('speech')
+const childLog = createLogger('speech:child')
 
 // On production builds, serve via a custom protocol scheme to avoid file:// origin issues
 const useCustomProtocol = !process.env.VITE_DEV_SERVER_URL
@@ -175,6 +180,9 @@ app.on('certificate-error', (event, _webContents, url, _error, _certificate, cal
 })
 
 app.whenReady().then(() => {
+  initLogger()
+  log.info('App ready', { version: app.getVersion(), packaged: app.isPackaged, userData: app.getPath('userData') })
+
   // Set app identity for Windows notifications (otherwise shows "electron.app.Electron")
   if (process.platform === 'win32') {
     app.setAppUserModelId('ClawControl')
@@ -527,7 +535,7 @@ async function extractZipToDir(zipBuffer: Buffer, targetDir: string): Promise<st
       const compressed = zipBuffer.subarray(dataOffset, dataOffset + entry.compressedSize)
       fileData = zlib.inflateRawSync(compressed)
     } else {
-      console.warn(`[clawhub] Skipping ${relativeName}: unsupported compression method ${entry.compressionMethod}`)
+      createLogger('clawhub').warn(`Skipping ${relativeName}: unsupported compression method ${entry.compressionMethod}`)
       continue
     }
 

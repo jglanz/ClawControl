@@ -63,6 +63,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onHotkeyToggle: (cb: () => void) => { ipcRenderer.on('speech:hotkeyToggle', () => cb()) },
 
   // Popout auth
+  logForward: (level: string, category: string, message: string, data?: string) =>
+    ipcRenderer.send('log:forward', level, category, message, data),
+  getLogFilePath: () => ipcRenderer.invoke('log:getFilePath'),
   onPopoutAuthToken: (callback: (token: string) => void) => {
     ipcRenderer.on('popout:authToken', (_event, token: string) => callback(token))
   },
@@ -95,6 +98,8 @@ declare global {
       speechRecognize: (timeoutSec?: number) => Promise<{ text: string; error?: string }>
       speechStop: () => Promise<void>
       speechAvailable: () => Promise<boolean>
+      logForward: (level: string, category: string, message: string, data?: string) => void
+      getLogFilePath: () => Promise<string>
       speechCapabilities: () => Promise<{
         stt: boolean; wake: boolean; tts: boolean
         recorder: string | null; whisperBinary: string | null; streamBinary: string | null
