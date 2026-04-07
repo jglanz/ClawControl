@@ -1,8 +1,10 @@
 /**
  * Speech module — IPC handlers, global hotkey, orchestration.
  *
- * Primary engine: WhisperStreamManager (persistent process, low latency)
- * Fallback: record + whisper-cli transcription (higher latency, for one-shot only)
+ * Architecture: Always in WAKE mode. Every utterance requires the wake word.
+ * The text after the wake word IS the command/message — no separate capturing state.
+ * This eliminates TTS feedback issues entirely since the mic only processes
+ * text that follows a wake trigger.
  */
 
 import { ipcMain, BrowserWindow, globalShortcut } from 'electron'
@@ -40,15 +42,24 @@ function getOrCreateStream(): WhisperStreamManager | null {
 
   streamManager = new WhisperStreamManager()
 
+  // Wake word matched — the command text is everything after the trigger
   streamManager.on('wake', (ev: WakeMatchEvent) => {
-    log.info('Wake event → renderer', ev)
-    if (ev.command) {
-      // Wake word + command text — send as one-shot message
-      send('speech:wakeDetected', { ...ev, action: 'oneShot', text: ev.command })
+    log.info('Wake event', { ...ev, vaActive })
+
+    if (vaActive) {
+      // VA mode: send command as VA transcript, then enter idle for TTS
+      if (ev.command) {
+        streamManager?.enterIdle()
+        send('speech:vaPhase', 'waiting')
+        send('speech:vaTranscript', ev.command)
+      }
+      // No command after wake word — just ignore, stay in wake
     } else {
-      // Wake word alone — start capturing for the next utterance
-      send('speech:wakeDetected', { ...ev, action: 'capture', text: '' })
-      streamManager?.enterCapturing()
+      // Normal mode: forward to renderer
+      if (ev.command) {
+        send('speech:wakeDetected', { ...ev, action: 'oneShot', text: ev.command })
+      }
+      // No command — ignore
     }
   })
 
@@ -57,28 +68,11 @@ function getOrCreateStream(): WhisperStreamManager | null {
     send('speech:wakeDetected', { trigger: '', text: '', action: 'startAssistant' })
   })
 
-  streamManager.on('transcript', (text: string) => {
-    log.info('Transcript finalized', { text, vaActive })
-    if (vaActive) {
-      // Voice Assistant mode — emit as VA transcript
-      send('speech:vaTranscript', text)
-    } else {
-      // One-shot dictation — emit as dictation result
-      send('speech:dictationResult', { text })
-      // Return to wake listening
-      streamManager?.enterWake()
-    }
-  })
-
-  streamManager.on('partial', (text: string) => {
-    send('speech:partialTranscript', text)
-  })
-
   streamManager.on('stopCommand', () => {
     log.info('Stop command detected — stopping VA')
     vaActive = false
     send('speech:vaStopped')
-    streamManager?.enterWake()
+    // Already in wake mode, just stay there
   })
 
   streamManager.on('stopped', () => {
@@ -105,7 +99,6 @@ function windowsSpeechRecognize(timeoutSec: number): Promise<{ text: string; err
   }
   return new Promise((resolve) => {
     const clampedTimeout = Math.max(5, Math.min(timeoutSec, 30))
-    log.info('Starting Windows speech recognition', { clampedTimeout })
     const script = `
       [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
       Add-Type -AssemblyName System.Speech
@@ -137,7 +130,6 @@ export function setupSpeechHandlers(mainWindow: BrowserWindow): void {
   win = mainWindow
   log.info('Setting up speech IPC handlers')
 
-  // ── Capabilities ──────────────────────────────────────────────────────────
   ipcMain.handle('speech:capabilities', () => {
     const caps = detectCapabilities()
     return { ...caps, setupInstructions: getSetupInstructions(caps) }
@@ -146,48 +138,13 @@ export function setupSpeechHandlers(mainWindow: BrowserWindow): void {
   ipcMain.handle('speech:available', () => {
     if (process.platform === 'win32') return true
     const caps = detectCapabilities()
-    // Available if we have either streaming (preferred) or batch transcription
     return caps.wake || caps.stt
   })
 
-  // ── One-shot dictation (mic button) ───────────────────────────────────────
+  // One-shot dictation via mic button — fallback only (batch mode)
   ipcMain.handle('speech:recognize', async (_event, timeoutSec: number = 15) => {
     log.info('speech:recognize called', { timeoutSec })
     if (process.platform === 'win32') return windowsSpeechRecognize(timeoutSec)
-
-    // Prefer streaming: switch to capturing, wait for transcript
-    const stream = getOrCreateStream()
-    if (stream) {
-      return new Promise<{ text: string; error?: string }>((resolve) => {
-        const timeout = setTimeout(() => {
-          cleanup()
-          stream.enterWake()
-          resolve({ text: '' })
-        }, timeoutSec * 1000)
-
-        function cleanup() {
-          clearTimeout(timeout)
-          stream.removeListener('transcript', onTranscript)
-          stream.removeListener('stopCommand', onStop)
-        }
-        function onTranscript(text: string) {
-          cleanup()
-          if (!vaActive) stream.enterWake()
-          resolve({ text })
-        }
-        function onStop() {
-          cleanup()
-          stream.enterWake()
-          resolve({ text: '' })
-        }
-
-        stream.on('transcript', onTranscript)
-        stream.on('stopCommand', onStop)
-        stream.enterCapturing()
-      })
-    }
-
-    // Fallback: batch record + transcribe
     const caps = detectCapabilities()
     if (!caps.stt) {
       return { text: '', error: 'Speech not available. ' + getSetupInstructions(caps).join(' ') }
@@ -202,18 +159,13 @@ export function setupSpeechHandlers(mainWindow: BrowserWindow): void {
       windowsSpeechProcess = null
       return
     }
-    // If streaming, return to wake (don't kill the process)
-    if (streamManager?.state === 'capturing') {
-      streamManager.enterWake()
-      return
-    }
     stopTranscription()
     stopRecording()
   })
 
-  // ── Wake word ─────────────────────────────────────────────────────────────
+  // ── Wake word — always-on ─────────────────────────────────────────────────
   ipcMain.handle('speech:wakeStart', (_event, triggers: string[]) => {
-    log.info('speech:wakeStart called', { triggers })
+    log.info('speech:wakeStart', { triggers })
     const stream = getOrCreateStream()
     if (!stream) return false
     stream.enterWake(triggers)
@@ -221,10 +173,8 @@ export function setupSpeechHandlers(mainWindow: BrowserWindow): void {
   })
 
   ipcMain.handle('speech:wakeStop', () => {
-    log.info('speech:wakeStop called')
-    if (streamManager?.state === 'wake') {
-      streamManager.enterIdle()
-    }
+    log.info('speech:wakeStop')
+    streamManager?.enterIdle()
   })
 
   ipcMain.handle('speech:wakeUpdateTriggers', (_event, triggers: string[]) => {
@@ -233,21 +183,23 @@ export function setupSpeechHandlers(mainWindow: BrowserWindow): void {
   })
 
   // ── Voice Assistant ───────────────────────────────────────────────────────
+  // VA mode just sets a flag. Stream stays in wake mode.
+  // Every utterance still requires wake word. Command text after wake word
+  // gets sent as VA transcript instead of one-shot.
   ipcMain.handle('speech:vaStart', () => {
-    log.info('speech:vaStart called')
+    log.info('speech:vaStart')
     const stream = getOrCreateStream()
     if (!stream) return false
     vaActive = true
-    stream.enterCapturing()
+    stream.enterWake()
     send('speech:vaStarted')
     send('speech:vaPhase', 'listening')
     return true
   })
 
   ipcMain.handle('speech:vaStop', () => {
-    log.info('speech:vaStop called')
+    log.info('speech:vaStop')
     vaActive = false
-    streamManager?.enterWake()
     send('speech:vaStopped')
   })
 
@@ -257,23 +209,23 @@ export function setupSpeechHandlers(mainWindow: BrowserWindow): void {
     if (cfg.silenceTimeoutMs) streamManager?.setSilenceWindow(cfg.silenceTimeoutMs)
   })
 
+  // TTS speaking/done — enter idle during playback, back to wake after
   ipcMain.handle('speech:vaNotifySpeaking', () => {
-    log.debug('speech:vaNotifySpeaking — entering idle (TTS playing)')
+    log.debug('speech:vaNotifySpeaking — idle during TTS')
     streamManager?.enterIdle()
     send('speech:vaPhase', 'speaking')
   })
 
   ipcMain.handle('speech:vaNotifySpeakingDone', () => {
-    log.info('speech:vaNotifySpeakingDone — resuming capture')
+    log.info('speech:vaNotifySpeakingDone — back to wake')
     if (vaActive) {
-      streamManager?.enterCapturing()
+      streamManager?.enterWake()
       send('speech:vaPhase', 'listening')
     }
   })
 
   ipcMain.handle('speech:vaNotifyWaiting', () => {
-    log.debug('speech:vaNotifyWaiting')
-    // Stay in idle while waiting for server response
+    log.debug('speech:vaNotifyWaiting — idle during response')
     streamManager?.enterIdle()
     send('speech:vaPhase', 'waiting')
   })
